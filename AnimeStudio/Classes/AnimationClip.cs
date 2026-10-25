@@ -1637,31 +1637,25 @@ namespace AnimeStudio
             m_CycleOffset = reader.ReadSingle();
             m_AverageAngularSpeed = reader.ReadSingle();
 
-            if (reader.Game.Type.IsSR())
+            // Everything after m_AverageAngularSpeed is read by ReadTail, and its first field (m_IndexArray) has
+            // no width marker: Int16 or Int32 is only known from the game and, for SR, from the type hash. The hash
+            // list lags behind HSR updates (4.5+ ships a new one) and a wrong guess shifts every field after it, so
+            // a wrong guess rewinds to tailStart and retries the other width. When the first guess is right (every
+            // case that worked before) nothing changes
+            var tailStart = reader.Position;
+            var preferShort = reader.Game.Type.IsZZZ() || (reader.Game.Type.IsSR() && HasShortIndexArray(reader.serializedType));
+            if (!TryReadTail(reader, preferShort))
             {
-                // Everything after m_AverageAngularSpeed is read by ReadTail, and its first field (m_IndexArray) has
-                // no width marker: Int16 or Int32 is only known from the type hash. The hash list lags behind HSR
-                // updates (4.5+ ships a new one) and a wrong guess shifts every field after it, so a wrong guess
-                // rewinds to tailStart and retries the other width
-                var tailStart = reader.Position;
-                var preferShort = HasShortIndexArray(reader.serializedType);
-                if (!TryReadTail(reader, preferShort))
+                reader.Position = tailStart;
+                if (TryReadTail(reader, !preferShort))
+                {
+                    Logger.Warning($"ClipMuscleConstant: m_IndexArray did not parse as {(preferShort ? "Int16" : "Int32")} for {reader.Game.Type}, read as {(preferShort ? "Int32" : "Int16")}");
+                }
+                else
                 {
                     reader.Position = tailStart;
-                    if (TryReadTail(reader, !preferShort))
-                    {
-                        Logger.Warning($"ClipMuscleConstant: unknown SR type hash, m_IndexArray read as {(preferShort ? "Int32" : "Int16")}");
-                    }
-                    else
-                    {
-                        reader.Position = tailStart;
-                        ReadTail(reader, preferShort);
-                    }
+                    ReadTail(reader, preferShort);
                 }
-            }
-            else
-            {
-                ReadTail(reader, reader.Game.Type.IsZZZ());
             }
         }
 
